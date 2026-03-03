@@ -1,0 +1,29 @@
+services:
+  runner:
+    build: .
+    container_name: backlog-runner
+    env_file: .env
+    environment:
+      - WORKER_ID=worker-1
+    volumes:
+      - ./BACKLOG.md:/app/BACKLOG.md
+      - ./CLAUDE.md:/app/CLAUDE.md
+      - ./logs:/app/logs
+      - ./.state:/app/.state
+      - ${PROJECT_DIR:-.}:/project
+    restart: unless-stopped
+
+  # Zweiter Worker für parallele Verarbeitung (auskommentieren zum Aktivieren)
+  # runner-2:
+  #   build: .
+  #   container_name: backlog-runner-2
+  #   env_file: .env
+  #   environment:
+  #     - WORKER_ID=worker-2
+  #   volumes:
+  #     - ./BACKLOG.md:/app/BACKLOG.md
+  #     - ./CLAUDE.md:/app/CLAUDE.md
+  #     - ./logs:/app/logs
+  #     - ./.state:/app/.state
+  #     - ${PROJECT_DIR:-.}:/project
+  #   restart: unless-stopped
