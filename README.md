@@ -1,77 +1,96 @@
-# Backlog Runner
+# Claude Code Runner
 
-Autonomer Task-Runner für Claude Code. Liest Tasks aus `BACKLOG.md` und verarbeitet sie im Headless-Modus.
+Telegram-controlled Claude Code runner with GitHub Issues as task source. Run Claude Code 24/7, manage tasks from your phone, and chat with Claude interactively.
+
+## Features
+
+- **GitHub Issues as backlog** -- tasks as Issues, priority/status via labels
+- **Telegram bot** -- full control: add tasks, view status, pause/resume, retry, get notifications
+- **Interactive chat mode** -- talk to Claude Code via Telegram with dry-run approval for changes
+- **Test-until-green loop** -- automatically run tests after task completion, fix failures
+- **Single Docker container** -- bot + runner in one process, easy to deploy
 
 ## Quick Start
 
 ```bash
-# 1. Konfiguration
+# 1. Configure
 cp .env.example .env
-# .env editieren: PROJECT_DIR setzen
+# Edit .env: set GITHUB_TOKEN, GITHUB_REPO, TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERS, PROJECT_DIR
 
-# 2. CLAUDE.md an dein Projekt anpassen
+# 2. Create a Telegram bot via @BotFather, get the token
 
-# 3. Tasks in BACKLOG.md definieren
+# 3. Get your Telegram user ID via @userinfobot
 
-# 4. Runner starten
-chmod +x runner.sh
-./runner.sh
-```
-
-## Dateien
-
-| Datei | Beschreibung |
-|---|---|
-| `runner.sh` | Hauptskript — parst Backlog, führt Tasks aus, handled Fehler |
-| `BACKLOG.md` | Task-Queue mit Prioritäten und Dependencies |
-| `CLAUDE.md` | Projekt-Kontext und Coding-Standards für Claude |
-| `Dockerfile` | Container-Image für 24/7-Betrieb |
-| `docker-compose.yml` | Multi-Worker Setup |
-| `.env.example` | Konfigurationsvorlage |
-
-## Task-Format
-
-```markdown
-## [TODO] TASK-001 | P1 | Mein Task-Titel
-depends: TASK-000
-
-Beschreibung was zu tun ist.
-```
-
-**Status**: `TODO` → `IN_PROGRESS` → `DONE` / `FAILED`
-**Priorität**: P0 (kritisch) > P1 (hoch) > P2 (mittel) > P3 (niedrig)
-**Dependencies**: Kommagetrennte Task-IDs oder `none`
-
-## CLI-Optionen
-
-```bash
-./runner.sh              # Kontinuierlicher Betrieb
-./runner.sh --dry-run    # Tasks anzeigen ohne auszuführen
-./runner.sh --single     # Einen Task abarbeiten, dann beenden
-./runner.sh --status     # Backlog-Status anzeigen
-./runner.sh --worker-id worker-2  # Worker-ID setzen
-```
-
-## Docker
-
-```bash
-# Einzelner Worker
+# 4. Run
 docker compose up -d
 
-# Logs ansehen
-docker compose logs -f
-
-# Stoppen
-docker compose down
+# Or run locally:
+pip install -r requirements.txt
+python -m bot.main
 ```
 
-Für parallele Worker den zweiten Service in `docker-compose.yml` aktivieren.
+## Telegram Commands
 
-## Features
+### Backlog Management
+| Command | Description |
+|---------|-------------|
+| `/status` | Backlog summary + runner state |
+| `/list [todo\|done\|failed]` | List tasks by status |
+| `/add P1 Task title` | Create a new task (GitHub Issue) |
+| `/detail #42` | Show full task info |
+| `/logs #42` | Show execution logs |
+| `/retry #42` | Reset failed task to TODO |
+| `/pause` | Pause the runner |
+| `/resume` | Resume the runner |
 
-- **Prioritäts-basierte Abarbeitung** — P0 vor P1 vor P2 vor P3
-- **Dependency-Tracking** — Tasks warten auf Abhängigkeiten
-- **Rate-Limit-Handling** — Exponentieller Backoff bei 429/Rate Limits
-- **Crash-Recovery** — State-Files ermöglichen Wiederaufnahme nach Absturz
-- **Lock-Mechanismus** — Verhindert Konflikte bei parallelen Runnern
-- **Logging** — Alle Aktionen werden in `logs/` protokolliert
+### Chat Mode
+| Command | Description |
+|---------|-------------|
+| `/chat` | Start interactive Claude Code session |
+| `/endchat` | End chat session |
+| Any text | Forwarded to Claude Code |
+
+In chat mode, change requests get a dry-run plan first. Approve or reject via inline buttons before Claude makes changes.
+
+## GitHub Issue Format
+
+Tasks are GitHub Issues with labels:
+- **Priority**: `P0` (critical), `P1` (high), `P2` (medium), `P3` (low)
+- **Status**: `backlog:todo`, `backlog:in-progress`, `backlog:done`, `backlog:failed`
+
+Optional metadata in issue body:
+```
+depends: #41, #42
+verify: pytest tests/ -x
+```
+
+## Architecture
+
+```
+GitHub Issues <----> Single Docker Container
+                     |- Telegram bot (handlers)
+                     |- Task runner (polls GitHub)
+                     |- Claude bridge (CLI wrapper)
+                     |- Test loop (deploy + verify)
+                     |
+                     Claude Code CLI installed
+```
+
+## Files
+
+| Path | Description |
+|------|-------------|
+| `bot/main.py` | Entry point -- starts bot + runner as async tasks |
+| `bot/config.py` | Configuration from environment variables |
+| `bot/handlers/backlog.py` | Telegram commands for task management |
+| `bot/handlers/chat.py` | Interactive chat mode with approval flow |
+| `bot/services/github_tasks.py` | GitHub Issues API client |
+| `bot/services/claude_bridge.py` | Claude Code CLI wrapper |
+| `bot/services/runner.py` | Task runner with test-until-green loop |
+| `bot/services/session_store.py` | Chat session persistence |
+| `Dockerfile` | Container with Python + Node.js + Claude CLI |
+| `docker-compose.yml` | Single-service Docker Compose |
+
+## Legacy
+
+`runner.sh` and `BACKLOG.md` are the original bash-based runner (kept for reference).

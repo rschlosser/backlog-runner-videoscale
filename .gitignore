@@ -1,4 +1,8 @@
 .env
 .state/
+.sessions/
+.signals/
 logs/
 .runner.lock
+__pycache__/
+*.pyc

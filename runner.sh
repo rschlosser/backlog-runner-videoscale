@@ -188,7 +188,12 @@ next_task() {
   local tasks
   tasks="$(parse_backlog | grep '^TODO|' | sort -t'|' -k3,3n)"
 
+  if [[ -z "$tasks" ]]; then
+    return 1
+  fi
+
   while IFS='|' read -r status id prio title depends line_num; do
+    [[ -z "$id" ]] && continue
     if deps_satisfied "$depends"; then
       echo "${id}|${prio}|${title}|${depends}|${line_num}"
       return 0
@@ -291,9 +296,11 @@ Important:
   local task_log="${LOG_DIR}/${task_id}_$(date '+%Y%m%d_%H%M%S').log"
 
   # Execute via Claude Code headless mode
+  # Unset CLAUDECODE to allow launching from within another Claude session
   local exit_code=0
-  claude -p "$prompt" \
+  CLAUDECODE= claude -p "$prompt" \
     --allowedTools "Bash(*),Read,Write,Edit,Glob,Grep" \
+    --verbose \
     --output-format stream-json \
     2>&1 | tee "$task_log" || exit_code=$?
 
