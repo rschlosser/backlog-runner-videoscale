@@ -35,6 +35,10 @@ class Config:
     # Sessions
     sessions_dir: Path = Path(".sessions")
 
+    # Health Monitor
+    monitor_interval: int = 300  # seconds between checks
+    monitor_enabled: bool = True
+
     # Worker
     worker_id: str = "worker-1"
 
@@ -63,6 +67,8 @@ class Config:
             log_level=os.getenv("LOG_LEVEL", "info"),
             log_dir=Path(os.getenv("LOG_DIR", "logs")),
             sessions_dir=Path(os.getenv("SESSIONS_DIR", ".sessions")),
+            monitor_interval=int(os.getenv("MONITOR_INTERVAL", "300")),
+            monitor_enabled=os.getenv("MONITOR_ENABLED", "true").lower() == "true",
             worker_id=os.getenv("WORKER_ID", "worker-1"),
         )
 

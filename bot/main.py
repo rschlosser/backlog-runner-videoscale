@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from bot.config import Config
 from bot.services.claude_bridge import ClaudeBridge
 from bot.services.github_tasks import GitHubTaskManager
+from bot.services.health_monitor import HealthMonitor
 from bot.services.runner import TaskRunner
 from bot.services.session_store import SessionStore
 
@@ -84,13 +85,18 @@ async def main():
 
     runner = TaskRunner(config, github, claude, notify=notify_all)
 
+    # Health monitor
+    monitor = None
+    if config.monitor_enabled:
+        monitor = HealthMonitor(notify=notify_all, interval=config.monitor_interval)
+
     # Register Telegram handlers
     if telegram_app:
         from bot.handlers.deploy_status import register_deploy_handlers
 
         register_backlog_handlers(telegram_app, config, github, runner)
         register_chat_handlers(telegram_app, config, claude, sessions, github=github)
-        register_deploy_handlers(telegram_app, config)
+        register_deploy_handlers(telegram_app, config, monitor=monitor)
 
     # Register Slack handlers
     if slack_app:
@@ -98,7 +104,7 @@ async def main():
 
         register_slack_backlog_handlers(slack_app, config, github, runner)
         register_slack_chat_handlers(slack_app, config, claude, sessions, github=github)
-        register_slack_deploy_handlers(slack_app, config)
+        register_slack_deploy_handlers(slack_app, config, monitor=monitor)
 
     # Ensure GitHub labels exist
     try:
@@ -138,6 +144,12 @@ async def main():
     # Start task runner
     runner_task = asyncio.create_task(runner.run_loop())
 
+    # Start health monitor
+    monitor_task = None
+    if monitor:
+        monitor_task = asyncio.create_task(monitor.run_loop())
+        logger.info(f"Health monitor started (interval={config.monitor_interval}s)")
+
     # Wait for shutdown signal
     stop_event = asyncio.Event()
 
@@ -155,6 +167,11 @@ async def main():
     logger.info("Shutting down...")
     runner.stop()
     runner_task.cancel()
+
+    if monitor:
+        monitor.stop()
+    if monitor_task:
+        monitor_task.cancel()
 
     if slack_task:
         slack_task.cancel()

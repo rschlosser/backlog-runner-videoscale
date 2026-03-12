@@ -38,6 +38,7 @@ async def _check_vercel() -> list[str]:
         return ["Vercel: no token configured"]
 
     lines = ["<b>Vercel (Frontend)</b>", "<pre>"]
+    lines.append(f"{'Env':8s} {'State':8s} {'Branch':6s} Commit")
     async with httpx.AsyncClient(timeout=10) as client:
         for env_name, project in VERCEL_PROJECTS:
             try:
@@ -92,6 +93,7 @@ async def _check_railway() -> list[str]:
     """
 
     lines = ["<b>Railway (Backend + Worker)</b>", "<pre>"]
+    lines.append(f"{'Env':8s} {'Service':8s} {'Status':10s} Deployed")
     async with httpx.AsyncClient(timeout=10) as client:
         for env_name, env_id in RAILWAY_ENVS:
             try:
@@ -296,8 +298,8 @@ async def _git_merge_and_push(source: str, target: str) -> tuple[bool, str]:
     return True, "\n".join(output_lines)
 
 
-def register_deploy_handlers(app, config):
-    """Register deployment commands: /health, /stable, /prod."""
+def register_deploy_handlers(app, config, monitor=None):
+    """Register deployment commands: /health, /stable, /prod, /monitor."""
     auth = restricted(config)
 
     @auth
@@ -369,6 +371,20 @@ def register_deploy_handlers(app, config):
 
         await msg.edit_text("\n".join(lines), parse_mode="HTML")
 
+    @auth
+    async def cmd_monitor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show current health status of all monitored services."""
+        if not monitor:
+            await update.message.reply_text("Health monitoring not enabled.")
+            return
+
+        from bot.services.health_monitor import format_monitor_status
+
+        statuses = monitor.get_current_status()
+        text = format_monitor_status(statuses, monitor._last_check)
+        await update.message.reply_text(text, parse_mode="HTML")
+
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CommandHandler("stable", cmd_stable))
     app.add_handler(CommandHandler("prod", cmd_prod))
+    app.add_handler(CommandHandler("monitor", cmd_monitor))

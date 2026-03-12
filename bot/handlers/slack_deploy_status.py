@@ -43,7 +43,16 @@ def _html_to_slack(lines: list[str]) -> str:
     return "\n".join(result)
 
 
-def register_slack_deploy_handlers(app: AsyncApp, config: Config):
+def _html_to_slack_text(html: str) -> str:
+    """Convert an HTML-formatted string to Slack mrkdwn."""
+    text = html.replace("<b>", "*").replace("</b>", "*")
+    text = text.replace("<i>", "_").replace("</i>", "_")
+    text = text.replace("<code>", "`").replace("</code>", "`")
+    text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+    return text
+
+
+def register_slack_deploy_handlers(app: AsyncApp, config: Config, monitor=None):
     """Register deployment commands for Slack."""
 
     @app.command("/br-health")
@@ -117,3 +126,20 @@ def register_slack_deploy_handlers(app: AsyncApp, config: Config):
         lines.insert(0, f"{icon} {status}\n")
 
         await respond("\n".join(lines))
+
+    @app.command("/br-monitor")
+    async def cmd_monitor(ack, respond, command):
+        await ack()
+        if not is_authorized(command["user_id"], config):
+            await respond("Not authorized.")
+            return
+
+        if not monitor:
+            await respond("Health monitoring not enabled.")
+            return
+
+        from bot.services.health_monitor import format_monitor_status
+
+        statuses = monitor.get_current_status()
+        html = format_monitor_status(statuses, monitor._last_check)
+        await respond(_html_to_slack_text(html))
