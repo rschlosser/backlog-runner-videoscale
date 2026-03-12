@@ -228,7 +228,7 @@ class HealthMonitor:
         return statuses
 
     async def _check_github_deploys(self) -> list[ServiceStatus]:
-        """Check latest GitHub Actions deploy workflow runs per branch."""
+        """Check latest GitHub Actions deploy workflow runs per branch/env."""
         token = os.environ.get("GITHUB_TOKEN", "")
         if not token:
             return []
@@ -239,11 +239,17 @@ class HealthMonitor:
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/vnd.github+json",
             }
-            for branch, env_label in [("dev", "INT"), ("main", "Stable")]:
+            # INT: push to dev, Stable: push to main, Prod: workflow_dispatch to main
+            checks = [
+                ("dev", "push", "INT"),
+                ("main", "push", "Stable"),
+                ("main", "workflow_dispatch", "Prod"),
+            ]
+            for branch, event_filter, env_label in checks:
                 try:
                     resp = await client.get(
                         f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{GITHUB_DEPLOY_WORKFLOW}/runs",
-                        params={"branch": branch, "per_page": 1},
+                        params={"branch": branch, "event": event_filter, "per_page": 1},
                         headers=headers,
                     )
                     resp.raise_for_status()
@@ -255,8 +261,8 @@ class HealthMonitor:
                         continue
 
                     run = runs[0]
-                    conclusion = run.get("conclusion")  # success, failure, cancelled, null
-                    status = run.get("status")  # queued, in_progress, completed
+                    conclusion = run.get("conclusion")
+                    status = run.get("status")
                     sha = run.get("head_sha", "")[:7]
 
                     if status != "completed":
