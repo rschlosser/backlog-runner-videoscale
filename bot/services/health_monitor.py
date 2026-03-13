@@ -220,10 +220,7 @@ class HealthMonitor:
 
                 except Exception as e:
                     logger.warning(f"Railway API check failed for {env_name}: {e}")
-                    # Don't mark as "down" — actual service health is checked via API endpoints
-                    statuses.append(
-                        ServiceStatus(f"Railway {env_name}", "degraded", f"API unreachable")
-                    )
+                    # Skip — actual service health is already checked via API endpoints
 
         return statuses
 
