@@ -325,7 +325,8 @@ def format_monitor_status(statuses: dict[str, ServiceStatus], last_check: float)
         if not group:
             continue
         lines.append(f"<b>{group_name}</b>")
-        for name, s in sorted(group):
+        env_order = {"INT": 0, "Stable": 1, "Prod": 2}
+        for name, s in sorted(group, key=lambda x: env_order.get(x[0].split()[-1], 9)):
             icon = icons.get(s.status, "?")
             ms = f" ({s.response_ms}ms)" if s.response_ms else ""
             detail = f" \u2014 {s.detail}" if s.detail else ""
