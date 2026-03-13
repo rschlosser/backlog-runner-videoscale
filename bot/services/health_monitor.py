@@ -81,7 +81,8 @@ class HealthMonitor:
         checks = []
         checks.extend(self._check_api(name, url) for name, url in API_ENDPOINTS)
         checks.extend(self._check_frontend(name, url) for name, url in FRONTEND_ENDPOINTS)
-        checks.append(self._check_railway())
+        # Railway GraphQL API unreachable from Railway containers (DNS)
+        # Service health is already verified via API endpoint checks above
         checks.append(self._check_github_deploys())
 
         results = await asyncio.gather(*checks, return_exceptions=True)
