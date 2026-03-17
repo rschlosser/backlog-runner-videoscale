@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 # Endpoints to monitor
 API_ENDPOINTS = [
-    ("API INT", "https://backend-int.up.railway.app/health"),
-    ("API Stable", "https://backend-stable.up.railway.app/health"),
-    ("API Prod", "https://backend-prod-1.up.railway.app/health"),
+    ("API INT", "https://videoscale-int-backend.up.railway.app/health"),
+    ("API Stable", "https://videoscale-stable-backend.up.railway.app/health"),
+    ("API Prod", "https://videoscale-prod-backend.up.railway.app/health"),
 ]
 
 FRONTEND_ENDPOINTS = [
