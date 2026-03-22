@@ -211,6 +211,26 @@ class GitHubTaskManager:
         )
         resp.raise_for_status()
 
+    async def count_failure_comments(self, issue_number: int) -> int:
+        """Count how many '## ❌ Task Failed' comments exist on an issue."""
+        count = 0
+        page = 1
+        while True:
+            resp = await self.client.get(
+                f"{self.base_url}/issues/{issue_number}/comments",
+                params={"per_page": 100, "page": page},
+            )
+            if resp.status_code != 200:
+                break
+            comments = resp.json()
+            if not comments:
+                break
+            for c in comments:
+                if c.get("body", "").startswith("## ❌ Task Failed"):
+                    count += 1
+            page += 1
+        return count
+
     async def get_task_detail(self, issue_number: int) -> Task:
         """Fetch a single issue by number."""
         resp = await self.client.get(f"{self.base_url}/issues/{issue_number}")

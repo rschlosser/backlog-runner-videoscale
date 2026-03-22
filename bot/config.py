@@ -26,6 +26,7 @@ class Config:
     runner_interval: int = 30
     max_retries: int = 3
     max_verify_retries: int = 3
+    max_task_retries: int = 5  # auto-retry failed tasks up to N times
     default_verify_cmd: str = ""
 
     # Logging
@@ -38,6 +39,7 @@ class Config:
     # Health Monitor
     monitor_interval: int = 300  # seconds between checks
     monitor_enabled: bool = True
+    telegram_group_chat_id: int = 0
 
     # Worker
     worker_id: str = "worker-1"
@@ -63,12 +65,14 @@ class Config:
             runner_interval=int(os.getenv("RUNNER_INTERVAL", "30")),
             max_retries=int(os.getenv("MAX_RETRIES", "3")),
             max_verify_retries=int(os.getenv("MAX_VERIFY_RETRIES", "3")),
+            max_task_retries=int(os.getenv("MAX_TASK_RETRIES", "5")),
             default_verify_cmd=os.getenv("DEFAULT_VERIFY_CMD", ""),
             log_level=os.getenv("LOG_LEVEL", "info"),
             log_dir=Path(os.getenv("LOG_DIR", "logs")),
             sessions_dir=Path(os.getenv("SESSIONS_DIR", ".sessions")),
             monitor_interval=int(os.getenv("MONITOR_INTERVAL", "300")),
             monitor_enabled=os.getenv("MONITOR_ENABLED", "true").lower() == "true",
+            telegram_group_chat_id=int(os.getenv("TELEGRAM_GROUP_CHAT_ID", "0")),
             worker_id=os.getenv("WORKER_ID", "worker-1"),
         )
 

@@ -129,6 +129,13 @@ class TaskRunner:
             result = await self.claude.run_task(task.title, task.body, issue_number=task.number, on_progress=on_progress)
 
             if not result.success:
+                # If auth expired, pause runner to avoid burning retries
+                if "authentication expired" in result.output.lower() or "auth" in result.output.lower() and "login" in result.output.lower():
+                    self._paused = True
+                    await self._notify(
+                        "🔑 Claude authentication expired! Runner paused.\n"
+                        "Run `claude auth login` on the server, then /resume."
+                    )
                 await self._handle_failure(task, result.output)
                 return
 
@@ -138,6 +145,12 @@ class TaskRunner:
                 success = await self._verify_loop(task, result.conversation_id, verify_cmd)
                 if not success:
                     return
+
+            # Push changes to remote — only mark done if push succeeds
+            push_ok = await self._push_changes()
+            if not push_ok:
+                await self._handle_failure(task, "Task completed but git push failed. Changes are committed locally but not on remote.")
+                return
 
             await self.github.update_status(task.number, "done")
             summary = result.output[:2000] if result.output else "Task completed"
@@ -201,6 +214,27 @@ class TaskRunner:
         )
         return False
 
+    async def _push_changes(self) -> bool:
+        """Push committed changes to remote. Returns True on success."""
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "git", "push",
+                cwd=str(self.config.project_dir),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            stdout, _ = await process.communicate()
+            output = stdout.decode("utf-8", errors="replace").strip()
+            if process.returncode == 0:
+                logger.info(f"Git push: {output}")
+                return True
+            else:
+                logger.error(f"Git push failed (rc={process.returncode}): {output}")
+                return False
+        except Exception as e:
+            logger.error(f"Git push error: {e}")
+            return False
+
     async def _run_verify_cmd(self, cmd: str) -> str | None:
         """Run a verification command. Returns None if passed, or output if failed."""
         # Replace Docker-style /project paths with actual project dir
@@ -221,15 +255,36 @@ class TaskRunner:
         return output
 
     async def _handle_failure(self, task: Task, error_output: str):
-        await self.github.update_status(task.number, "failed")
         truncated = error_output[:3000] if error_output else "Unknown error"
         await self.github.add_comment(
             task.number,
             f"## \u274c Task Failed\n\n```\n{truncated}\n```",
         )
+
+        # Check if we should auto-retry
+        failure_count = await self.github.count_failure_comments(task.number)
+        max_retries = self.config.max_task_retries
         issue_url = f"https://github.com/{self.github.repo}/issues/{task.number}"
         short_error = error_output[:1000] if error_output else "Unknown error"
-        await self._notify(f"\u274c Failed: #{task.number} {task.title}\n{issue_url}\n\n```\n{short_error}\n```")
+
+        if failure_count < max_retries:
+            # Re-queue for another attempt
+            await self.github.update_status(task.number, "todo")
+            await self._notify(
+                f"\u26a0\ufe0f Failed: #{task.number} {task.title} "
+                f"(attempt {failure_count}/{max_retries} — auto-retrying)\n"
+                f"{issue_url}\n\n```\n{short_error}\n```"
+            )
+            logger.info(f"Task #{task.number} auto-retry {failure_count}/{max_retries}")
+        else:
+            # Max retries exhausted — mark as permanently failed
+            await self.github.update_status(task.number, "failed")
+            await self._notify(
+                f"\u274c Failed: #{task.number} {task.title} "
+                f"(gave up after {max_retries} attempts)\n"
+                f"{issue_url}\n\n```\n{short_error}\n```"
+            )
+            logger.warning(f"Task #{task.number} permanently failed after {max_retries} attempts")
 
     async def run_single(self, issue_number: int):
         """Run a specific task (triggered via /retry or manual)."""

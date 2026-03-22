@@ -47,7 +47,6 @@ def register_chat_handlers(
 ):
     """Register chat-mode command and message handlers."""
     auth = restricted(config)
-    _pending_photo_issues: dict[str, dict] = {}
 
     @auth
     async def cmd_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -337,64 +336,15 @@ def register_chat_handlers(
         ]
         body = "\n".join(body_parts)
 
-        # Check for duplicate
-        existing = await github.find_similar_open(title)
-        if existing:
-            user_key = str(update.effective_user.id)
-            _pending_photo_issues[user_key] = {
-                "title": title,
-                "body": body,
-                "priority": priority,
-            }
-            keyboard = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("\u2705 Create anyway", callback_data="photo_confirm"),
-                    InlineKeyboardButton("\u274c Cancel", callback_data="photo_cancel"),
-                ]
-            ])
-            await update.message.reply_text(
-                f"\u26a0\ufe0f Similar open issue exists:\n"
-                f"#{existing.number} ({existing.status}) \u2014 {existing.title}\n\n"
-                f"Create a new one anyway?",
-                reply_markup=keyboard,
-            )
-            return
-
         task = await github.create_task(title, body, priority)
         issue_url = f"https://github.com/{github.repo}/issues/{task.number}"
         await update.message.reply_text(
             f"\u2705 Created issue #{task.number}: {task.title} (P{task.priority})\n{issue_url}"
         )
 
-    async def handle_photo_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle confirm/cancel for duplicate photo issue creation."""
-        query = update.callback_query
-        await query.answer()
-
-        user_id = str(query.from_user.id)
-        if user_id not in _pending_photo_issues:
-            await query.edit_message_reply_markup(reply_markup=None)
-            return
-
-        if query.data == "photo_cancel":
-            del _pending_photo_issues[user_id]
-            await query.edit_message_text("Cancelled.")
-            return
-
-        if query.data == "photo_confirm":
-            pending = _pending_photo_issues.pop(user_id)
-            task = await github.create_task(
-                pending["title"], pending["body"], pending["priority"]
-            )
-            issue_url = f"https://github.com/{github.repo}/issues/{task.number}"
-            await query.edit_message_text(
-                f"\u2705 Created issue #{task.number}: {task.title} (P{task.priority})\n{issue_url}"
-            )
-
     app.add_handler(CommandHandler("chat", cmd_chat))
     app.add_handler(CommandHandler("endchat", cmd_endchat))
     app.add_handler(CallbackQueryHandler(handle_approval, pattern="^(approve|reject)$"))
-    app.add_handler(CallbackQueryHandler(handle_photo_confirmation, pattern="^photo_(confirm|cancel)$"))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     # Message handler must be added last — it catches all text not matching commands
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

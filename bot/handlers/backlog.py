@@ -4,8 +4,8 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes
+from telegram import Update
+from telegram.ext import CommandHandler, ContextTypes
 
 from bot.auth import restricted
 from bot.formatter import (
@@ -74,9 +74,6 @@ def register_backlog_handlers(app, config: Config, github: GitHubTaskManager, ru
 
         await update.message.reply_text(msg, parse_mode="MarkdownV2")
 
-    # Store pending add requests for duplicate confirmation
-    _pending_adds: dict[str, dict] = {}
-
     @auth
     async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text.replace("/add", "", 1).strip()
@@ -100,29 +97,6 @@ def register_backlog_handlers(app, config: Config, github: GitHubTaskManager, ru
 
         priority = int(prio_match.group(1))
         title = prio_match.group(2).strip()
-
-        # Check for duplicates
-        existing = await github.find_similar_open(title)
-        if existing:
-            user_id = str(update.effective_user.id)
-            _pending_adds[user_id] = {
-                "title": title,
-                "description": description,
-                "priority": priority,
-            }
-            keyboard = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("\u2705 Create anyway", callback_data="add_confirm"),
-                    InlineKeyboardButton("\u274c Cancel", callback_data="add_cancel"),
-                ]
-            ])
-            await update.message.reply_text(
-                f"\u26a0\ufe0f Similar open issue exists:\n"
-                f"#{existing.number} ({existing.status}) — {existing.title}\n\n"
-                f"Create a new one anyway?",
-                reply_markup=keyboard,
-            )
-            return
 
         task = await github.create_task(title, description, priority)
         await update.message.reply_text(
@@ -205,30 +179,6 @@ def register_backlog_handlers(app, config: Config, github: GitHubTaskManager, ru
         runner.resume()
         await update.message.reply_text("\u25b6\ufe0f Runner resumed.")
 
-    async def handle_add_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle confirm/cancel for duplicate task creation."""
-        query = update.callback_query
-        await query.answer()
-
-        user_id = str(query.from_user.id)
-        if user_id not in _pending_adds:
-            await query.edit_message_reply_markup(reply_markup=None)
-            return
-
-        if query.data == "add_cancel":
-            del _pending_adds[user_id]
-            await query.edit_message_text("Cancelled.")
-            return
-
-        if query.data == "add_confirm":
-            pending = _pending_adds.pop(user_id)
-            task = await github.create_task(
-                pending["title"], pending["description"], pending["priority"]
-            )
-            await query.edit_message_text(
-                f"\u2705 Created #{task.number}: {task.title} (P{task.priority})"
-            )
-
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("list", cmd_list))
     app.add_handler(CommandHandler("add", cmd_add))
@@ -237,4 +187,3 @@ def register_backlog_handlers(app, config: Config, github: GitHubTaskManager, ru
     app.add_handler(CommandHandler("retry", cmd_retry))
     app.add_handler(CommandHandler("pause", cmd_pause))
     app.add_handler(CommandHandler("resume", cmd_resume))
-    app.add_handler(CallbackQueryHandler(handle_add_confirmation, pattern="^add_(confirm|cancel)$"))

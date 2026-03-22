@@ -113,7 +113,7 @@ async def _check_railway() -> list[str]:
                 )
                 resp.raise_for_status()
                 data = resp.json()
-                edges = data.get("data", {}).get("deployments", {}).get("edges", [])
+                edges = ((data.get("data") or {}).get("deployments") or {}).get("edges", [])
 
                 # Get latest deployment per service
                 seen = set()
@@ -199,7 +199,7 @@ async def _deploy_railway(env_name: str, env_id: str) -> list[str]:
         )
         resp.raise_for_status()
         data = resp.json()
-        edges = data.get("data", {}).get("deployments", {}).get("edges", [])
+        edges = ((data.get("data") or {}).get("deployments") or {}).get("edges", [])
 
         # Find latest deployment per service
         seen_services = set()

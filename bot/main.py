@@ -70,11 +70,14 @@ async def main():
     # Notification callback — sends to both Telegram and Slack
     async def notify_all(message: str):
         if telegram_app:
-            for user_id in config.telegram_allowed_users:
+            chat_ids = list(config.telegram_allowed_users)
+            if config.telegram_group_chat_id:
+                chat_ids.append(config.telegram_group_chat_id)
+            for chat_id in chat_ids:
                 try:
-                    await telegram_app.bot.send_message(chat_id=user_id, text=message)
+                    await telegram_app.bot.send_message(chat_id=chat_id, text=message)
                 except Exception as e:
-                    logger.error(f"Failed to notify Telegram user {user_id}: {e}")
+                    logger.error(f"Failed to notify Telegram chat {chat_id}: {e}")
         if slack_app and config.slack_channel:
             try:
                 await slack_app.client.chat_postMessage(

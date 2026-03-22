@@ -9,6 +9,8 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
+AUTH_ERROR_PATTERNS = ["authentication_error", "OAuth token has expired", "token expired", "invalid_api_key"]
+
 READ_ONLY_TOOLS = "Read,Glob,Grep"
 FULL_TOOLS = "Bash(*),Read,Write,Edit,Glob,Grep"
 
@@ -44,6 +46,7 @@ class ClaudeBridge:
         allowed_tools: str = FULL_TOOLS,
         conversation_id: str | None = None,
         on_progress: ProgressCallback = None,
+        _retry_count: int = 0,
     ) -> TaskResult:
         """Run claude CLI and return the result. Streams progress via callback."""
         cmd = [
@@ -169,7 +172,33 @@ class ClaudeBridge:
         exit_code = process.returncode
 
         full_output = "\n".join(assistant_text) if assistant_text else ""
+        stderr_output = ""
+        if process.stderr:
+            try:
+                stderr_bytes = await process.stderr.read()
+                stderr_output = stderr_bytes.decode("utf-8", errors="replace")
+            except Exception:
+                pass
+
         logger.info(f"Claude finished: exit={exit_code}, output_len={len(full_output)}")
+
+        # Check for authentication errors and retry once
+        combined = (full_output + " " + stderr_output).lower()
+        if any(pat.lower() in combined for pat in AUTH_ERROR_PATTERNS):
+            if _retry_count < 1:
+                logger.warning("Authentication error detected, retrying after short delay...")
+                await asyncio.sleep(5)
+                return await self.run_claude(
+                    prompt, allowed_tools, conversation_id, on_progress,
+                    _retry_count=_retry_count + 1,
+                )
+            else:
+                logger.error("Authentication error persists after retry")
+                return TaskResult(
+                    success=False,
+                    output="⚠️ Claude authentication expired. Please run `claude auth login` on the server to re-authenticate.",
+                    conversation_id=conv_id_ref[0],
+                )
 
         return TaskResult(
             success=exit_code == 0,
